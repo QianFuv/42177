@@ -5,3 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
+
+[project.scripts]
+index_gen = "scripts.pre.index_gen:main"
+
+[tool.setuptools]
+packages = ["scripts", "scripts.pre"]
