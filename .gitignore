@@ -13,3 +13,8 @@ wheels/
 cache/
 data_index/
 .claude/
+ultralytics_docs/
+
+# Model files
+*.pt
+models/*/

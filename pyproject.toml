@@ -4,10 +4,30 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "ultralytics>=8.3.213"
+]
 
 [project.scripts]
 index_gen = "scripts.pre.index_gen:main"
+train = "scripts.training.train:main"
 
 [tool.setuptools]
-packages = ["scripts", "scripts.pre"]
+packages = ["scripts"]
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+required-environments = [
+    "sys_platform == 'win32'"
+]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
