@@ -12,3 +12,4 @@ wheels/
 # Project Specific
 cache/
 data_index/
+.claude/
