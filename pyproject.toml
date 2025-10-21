@@ -10,7 +10,7 @@ dependencies = [
 
 [project.scripts]
 index_gen = "scripts.pre.index_gen:main"
-train = "scripts.training.train:main"
+train = "scripts.train.train:main"
 
 [tool.setuptools]
 packages = ["scripts"]
