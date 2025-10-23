@@ -227,7 +227,6 @@ def predict_cobb_angles(
 
     if all(col in df.columns for col in ['cobb_angle_1', 'cobb_angle_2', 'cobb_angle_3']):
         true_angles = results_df[['cobb_angle_1', 'cobb_angle_2', 'cobb_angle_3']].values
-        pred_angles = predictions
 
         metrics = predictor.evaluate(X, true_angles)
         predictor.print_metrics(metrics)

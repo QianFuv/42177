@@ -13,6 +13,7 @@ wheels/
 cache/
 data_index/
 .claude/
+CLAUDE.md
 docs/
 
 # Model files

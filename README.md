@@ -64,6 +64,8 @@ uv sync
 This will install all required packages including:
 - ultralytics (YOLOv11)
 - xgboost
+- optuna (hyperparameter optimization)
+- plotly (optimization visualizations)
 - scipy
 - scikit-learn
 - pandas
@@ -109,7 +111,33 @@ Outputs:
 - `best.pt`: Best model based on validation metrics
 - `last.pt`: Final epoch checkpoint
 
-### 3. Predict Cobb Angles
+### 3. Optimize XGBoost Hyperparameters (Optional)
+
+Before training the Cobb angle predictor, you can optimize hyperparameters using Optuna:
+
+```bash
+uv run optimize --csv data_index/data.csv --output models/optuna_results
+```
+
+Options:
+- `--n-trials`: Number of optimization trials (default: 100)
+- `--poly-degree`: Polynomial degree for curve fitting (default: 7)
+- `--spline-smoothing`: Spline smoothing factor (default: 1.0)
+- `--n-splits`: Cross-validation splits (default: 5)
+- `--timeout`: Maximum optimization time in seconds (optional)
+
+This will:
+- Perform hyperparameter optimization using Optuna with TPE sampler
+- Use 5-fold cross-validation to evaluate each trial
+- Save best hyperparameters to `models/optuna_results/best_hyperparameters.json`
+- Save all trial results to `models/optuna_results/optimization_trials.csv`
+- Generate interactive HTML visualizations in `models/optuna_results/visualizations/`:
+  - optimization_history.html: Trial values over time
+  - param_importances.html: Most influential hyperparameters
+  - param_slice.html: Individual parameter effects
+  - parallel_coordinate.html: Multi-dimensional parameter relationships
+
+### 4. Train Cobb Angle Predictor
 
 #### Train the Cobb Angle Predictor
 
@@ -124,6 +152,8 @@ Options:
 - `--max-depth`: Maximum tree depth (default: 6)
 - `--learning-rate`: Learning rate (default: 0.1)
 - `--val-split`: Validation split ratio (default: 0.2)
+
+You can use the optimized hyperparameters from step 3 by specifying them here.
 
 #### Run Predictions
 
