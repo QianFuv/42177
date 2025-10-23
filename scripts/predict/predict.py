@@ -3,6 +3,7 @@ Main pipeline for Cobb angle prediction using curve fitting and XGBoost.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 import pandas as pd
@@ -111,6 +112,21 @@ def prepare_targets(df: pd.DataFrame, indices: list[int]) -> np.ndarray:
     return targets
 
 
+def load_config_from_json(config_path: Path) -> dict:
+    """
+    Load hyperparameters from JSON configuration file.
+
+    Args:
+        config_path: Path to JSON configuration file
+
+    Returns:
+        Dictionary containing hyperparameters
+    """
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    return config
+
+
 def train_model(
     csv_path: Path,
     output_dir: Path,
@@ -119,7 +135,13 @@ def train_model(
     n_estimators: int = 100,
     max_depth: int = 6,
     learning_rate: float = 0.1,
-    validation_split: float = 0.2
+    validation_split: float = 0.2,
+    min_child_weight: int = 1,
+    subsample: float = 1.0,
+    colsample_bytree: float = 1.0,
+    gamma: float = 0.0,
+    reg_alpha: float = 0.0,
+    reg_lambda: float = 1.0
 ) -> None:
     """
     Train Cobb angle prediction model.
@@ -133,6 +155,12 @@ def train_model(
         max_depth: Maximum tree depth
         learning_rate: Learning rate for XGBoost
         validation_split: Fraction of data for validation
+        min_child_weight: Minimum sum of instance weight needed in a child
+        subsample: Subsample ratio of training instances
+        colsample_bytree: Subsample ratio of columns when constructing each tree
+        gamma: Minimum loss reduction required to make a split
+        reg_alpha: L1 regularization term on weights
+        reg_lambda: L2 regularization term on weights
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -155,7 +183,13 @@ def train_model(
     predictor = CobbAnglePredictor(
         n_estimators=n_estimators,
         max_depth=max_depth,
-        learning_rate=learning_rate
+        learning_rate=learning_rate,
+        min_child_weight=min_child_weight,
+        subsample=subsample,
+        colsample_bytree=colsample_bytree,
+        gamma=gamma,
+        reg_alpha=reg_alpha,
+        reg_lambda=reg_lambda
     )
 
     print("\nTraining XGBoost model...")
@@ -265,6 +299,12 @@ def main():
         help='Output directory for trained model'
     )
     train_parser.add_argument(
+        '--config',
+        type=str,
+        default=None,
+        help='Path to JSON config file with hyperparameters (e.g., best_hyperparameters.json from Optuna)'
+    )
+    train_parser.add_argument(
         '--poly-degree',
         type=int,
         default=7,
@@ -293,6 +333,42 @@ def main():
         type=float,
         default=0.1,
         help='Learning rate'
+    )
+    train_parser.add_argument(
+        '--min-child-weight',
+        type=int,
+        default=1,
+        help='Minimum sum of instance weight needed in a child'
+    )
+    train_parser.add_argument(
+        '--subsample',
+        type=float,
+        default=1.0,
+        help='Subsample ratio of training instances'
+    )
+    train_parser.add_argument(
+        '--colsample-bytree',
+        type=float,
+        default=1.0,
+        help='Subsample ratio of columns when constructing each tree'
+    )
+    train_parser.add_argument(
+        '--gamma',
+        type=float,
+        default=0.0,
+        help='Minimum loss reduction required to make a split'
+    )
+    train_parser.add_argument(
+        '--reg-alpha',
+        type=float,
+        default=0.0,
+        help='L1 regularization term on weights'
+    )
+    train_parser.add_argument(
+        '--reg-lambda',
+        type=float,
+        default=1.0,
+        help='L2 regularization term on weights'
     )
     train_parser.add_argument(
         '--val-split',
@@ -336,16 +412,43 @@ def main():
     args = parser.parse_args()
 
     if args.command == 'train':
-        train_model(
-            csv_path=Path(args.csv),
-            output_dir=Path(args.output),
-            poly_degree=args.poly_degree,
-            spline_smoothing=args.spline_smoothing,
-            n_estimators=args.n_estimators,
-            max_depth=args.max_depth,
-            learning_rate=args.learning_rate,
-            validation_split=args.val_split
-        )
+        if args.config:
+            print(f"Loading hyperparameters from {args.config}")
+            config = load_config_from_json(Path(args.config))
+
+            train_model(
+                csv_path=Path(args.csv),
+                output_dir=Path(args.output),
+                poly_degree=args.poly_degree,
+                spline_smoothing=args.spline_smoothing,
+                n_estimators=config.get('n_estimators', args.n_estimators),
+                max_depth=config.get('max_depth', args.max_depth),
+                learning_rate=config.get('learning_rate', args.learning_rate),
+                min_child_weight=config.get('min_child_weight', args.min_child_weight),
+                subsample=config.get('subsample', args.subsample),
+                colsample_bytree=config.get('colsample_bytree', args.colsample_bytree),
+                gamma=config.get('gamma', args.gamma),
+                reg_alpha=config.get('reg_alpha', args.reg_alpha),
+                reg_lambda=config.get('reg_lambda', args.reg_lambda),
+                validation_split=args.val_split
+            )
+        else:
+            train_model(
+                csv_path=Path(args.csv),
+                output_dir=Path(args.output),
+                poly_degree=args.poly_degree,
+                spline_smoothing=args.spline_smoothing,
+                n_estimators=args.n_estimators,
+                max_depth=args.max_depth,
+                learning_rate=args.learning_rate,
+                min_child_weight=args.min_child_weight,
+                subsample=args.subsample,
+                colsample_bytree=args.colsample_bytree,
+                gamma=args.gamma,
+                reg_alpha=args.reg_alpha,
+                reg_lambda=args.reg_lambda,
+                validation_split=args.val_split
+            )
     elif args.command == 'predict':
         predict_cobb_angles(
             model_path=Path(args.model),

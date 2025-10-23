@@ -141,16 +141,30 @@ This will:
 
 #### Train the Cobb Angle Predictor
 
+**Option 1: Train with default or manual parameters**
 ```bash
 uv run predict train --csv data_index/data.csv --output models/cobb_predictor
 ```
 
+**Option 2: Train with optimized hyperparameters from Optuna (recommended after optimization)**
+```bash
+uv run predict train --csv data_index/data.csv --output models/cobb_predictor_optimized \
+  --config models/optuna_results/best_hyperparameters.json
+```
+
 Options:
+- `--config`: Path to JSON config file with hyperparameters (e.g., `best_hyperparameters.json` from Optuna)
 - `--poly-degree`: Polynomial degree for curve fitting (default: 7)
 - `--spline-smoothing`: Spline smoothing factor (default: 1.0)
 - `--n-estimators`: XGBoost estimator count (default: 100)
 - `--max-depth`: Maximum tree depth (default: 6)
 - `--learning-rate`: Learning rate (default: 0.1)
+- `--min-child-weight`: Minimum sum of instance weight (default: 1)
+- `--subsample`: Subsample ratio (default: 1.0)
+- `--colsample-bytree`: Column subsample ratio (default: 1.0)
+- `--gamma`: Minimum loss reduction (default: 0.0)
+- `--reg-alpha`: L1 regularization (default: 0.0)
+- `--reg-lambda`: L2 regularization (default: 1.0)
 - `--val-split`: Validation split ratio (default: 0.2)
 
 You can use the optimized hyperparameters from step 3 by specifying them here.
