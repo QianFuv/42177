@@ -9,9 +9,116 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+from sklearn.metrics import (
+    accuracy_score,
+    precision_recall_fscore_support,
+    confusion_matrix,
+    classification_report
+)
 
 from .feature_extractor import CurveFeatureExtractor
 from .model import CobbAnglePredictor
+
+
+def classify_severity(angles: np.ndarray) -> np.ndarray:
+    """
+    Classify spinal scoliosis severity based on maximum Cobb angle.
+
+    Args:
+        angles: Array of Cobb angles with shape (N, 3) or (3,)
+
+    Returns:
+        Array of severity classifications: 'normal', 'mild', 'moderate', or 'severe'
+    """
+    if angles.ndim == 1:
+        max_angle = np.max(angles)
+    else:
+        max_angle = np.max(angles, axis=1)
+
+    severity = np.empty(max_angle.shape, dtype=object)
+    severity[max_angle < 10] = 'normal'
+    severity[(max_angle >= 10) & (max_angle < 25)] = 'mild'
+    severity[(max_angle >= 25) & (max_angle <= 45)] = 'moderate'
+    severity[max_angle > 45] = 'severe'
+
+    return severity
+
+
+def evaluate_classification(y_true_classes: np.ndarray, y_pred_classes: np.ndarray) -> dict:
+    """
+    Evaluate classification performance.
+
+    Args:
+        y_true_classes: True severity classes
+        y_pred_classes: Predicted severity classes
+
+    Returns:
+        Dictionary containing classification metrics
+    """
+    accuracy = accuracy_score(y_true_classes, y_pred_classes)
+
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_true_classes,
+        y_pred_classes,
+        labels=['normal', 'mild', 'moderate', 'severe'],
+        average='weighted',
+        zero_division=0
+    )
+
+    cm = confusion_matrix(
+        y_true_classes,
+        y_pred_classes,
+        labels=['normal', 'mild', 'moderate', 'severe']
+    )
+
+    report = classification_report(
+        y_true_classes,
+        y_pred_classes,
+        labels=['normal', 'mild', 'moderate', 'severe'],
+        zero_division=0
+    )
+
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'confusion_matrix': cm,
+        'classification_report': report
+    }
+
+
+def print_classification_metrics(metrics: dict, dataset_name: str = "Dataset") -> None:
+    """
+    Print classification evaluation metrics.
+
+    Args:
+        metrics: Dictionary containing classification metrics
+        dataset_name: Name of the dataset being evaluated
+    """
+    print("\n" + "=" * 60)
+    print(f"{dataset_name} Classification Metrics")
+    print("=" * 60)
+    print(f"{'accuracy':<30}: {metrics['accuracy']:>10.4f}")
+    print(f"{'precision':<30}: {metrics['precision']:>10.4f}")
+    print(f"{'recall':<30}: {metrics['recall']:>10.4f}")
+    print(f"{'f1_score':<30}: {metrics['f1_score']:>10.4f}")
+    print("=" * 60)
+
+    print(f"\nConfusion Matrix ({dataset_name}):")
+    print("=" * 60)
+    print(f"{'True \\ Predicted':<15} {'normal':>10} {'mild':>10} {'moderate':>10} {'severe':>10}")
+    print("-" * 60)
+    cm = metrics['confusion_matrix']
+    labels = ['normal', 'mild', 'moderate', 'severe']
+    for i, label in enumerate(labels):
+        print(f"{label:<15} {cm[i][0]:>10d} {cm[i][1]:>10d} {cm[i][2]:>10d} {cm[i][3]:>10d}")
+    print("=" * 60)
+
+    print(f"\nDetailed Classification Report ({dataset_name}):")
+    print("=" * 60)
+    print(metrics['classification_report'])
+    print("=" * 60)
 
 
 def parse_bbox_string(bbox_str: str) -> np.ndarray:
@@ -201,24 +308,80 @@ def train_model(
 
     predictor.print_metrics(metrics)
 
-    model_path = output_dir / 'cobb_angle_predictor.pkl'
-    predictor.save(model_path)
-    print(f"Model saved to {model_path}")
+    split_idx = int(len(X) * (1 - validation_split))
+    X_train, X_val = X[:split_idx], X[split_idx:]
+    y_train, y_val = y[:split_idx], y[split_idx:]
+
+    y_train_pred = predictor.predict(X_train)
+    y_val_pred = predictor.predict(X_val)
+
+    y_train_classes = classify_severity(y_train)
+    y_train_pred_classes = classify_severity(y_train_pred)
+    y_val_classes = classify_severity(y_val)
+    y_val_pred_classes = classify_severity(y_val_pred)
+
+    train_class_metrics = evaluate_classification(y_train_classes, y_train_pred_classes)
+    val_class_metrics = evaluate_classification(y_val_classes, y_val_pred_classes)
+
+    print_classification_metrics(train_class_metrics, "Training")
+    print_classification_metrics(val_class_metrics, "Validation")
 
     importance_df = predictor.get_feature_importance()
     if importance_df is not None:
-        importance_path = output_dir / 'feature_importance.csv'
-        importance_df.to_csv(importance_path, index=False)
-        print(f"Feature importance saved to {importance_path}")
-
-        print("\nTop 10 most important features:")
+        print("\n" + "=" * 60)
+        print("Top 10 Most Important Features")
+        print("=" * 60)
         top_features = importance_df.groupby('feature')['importance'].mean().sort_values(ascending=False).head(10)
         for feature, importance in top_features.items():
-            print(f"  {feature:<30}: {importance:.4f}")
+            print(f"{feature:<30}: {importance:>10.4f}")
+        print("=" * 60)
+
+    model_path = output_dir / 'cobb_angle_predictor.pkl'
+    predictor.save(model_path)
 
     metrics_path = output_dir / 'training_metrics.csv'
     pd.DataFrame([metrics]).to_csv(metrics_path, index=False)
-    print(f"Training metrics saved to {metrics_path}")
+
+    class_metrics_data = {
+        'dataset': ['train', 'validation'],
+        'accuracy': [train_class_metrics['accuracy'], val_class_metrics['accuracy']],
+        'precision': [train_class_metrics['precision'], val_class_metrics['precision']],
+        'recall': [train_class_metrics['recall'], val_class_metrics['recall']],
+        'f1_score': [train_class_metrics['f1_score'], val_class_metrics['f1_score']]
+    }
+    class_metrics_path = output_dir / 'classification_metrics.csv'
+    pd.DataFrame(class_metrics_data).to_csv(class_metrics_path, index=False)
+
+    train_cm_path = output_dir / 'train_confusion_matrix.csv'
+    pd.DataFrame(
+        train_class_metrics['confusion_matrix'],
+        index=['normal', 'mild', 'moderate', 'severe'],
+        columns=['normal', 'mild', 'moderate', 'severe']
+    ).to_csv(train_cm_path)
+
+    val_cm_path = output_dir / 'val_confusion_matrix.csv'
+    pd.DataFrame(
+        val_class_metrics['confusion_matrix'],
+        index=['normal', 'mild', 'moderate', 'severe'],
+        columns=['normal', 'mild', 'moderate', 'severe']
+    ).to_csv(val_cm_path)
+
+    importance_path = None
+    if importance_df is not None:
+        importance_path = output_dir / 'feature_importance.csv'
+        importance_df.to_csv(importance_path, index=False)
+
+    print("\n" + "=" * 60)
+    print("Training Complete - Files Saved")
+    print("=" * 60)
+    print(f"{'Model':<30}: {model_path}")
+    print(f"{'Regression metrics':<30}: {metrics_path}")
+    print(f"{'Classification metrics':<30}: {class_metrics_path}")
+    print(f"{'Training confusion matrix':<30}: {train_cm_path}")
+    print(f"{'Validation confusion matrix':<30}: {val_cm_path}")
+    if importance_path is not None:
+        print(f"{'Feature importance':<30}: {importance_path}")
+    print("=" * 60)
 
 
 def predict_cobb_angles(
@@ -259,6 +422,9 @@ def predict_cobb_angles(
     results_df['predicted_angle_2'] = predictions[:, 1]
     results_df['predicted_angle_3'] = predictions[:, 2]
 
+    predicted_classes = classify_severity(predictions)
+    results_df['predicted_severity_class'] = predicted_classes
+
     if all(col in df.columns for col in ['cobb_angle_1', 'cobb_angle_2', 'cobb_angle_3']):
         true_angles = results_df[['cobb_angle_1', 'cobb_angle_2', 'cobb_angle_3']].values
 
@@ -269,10 +435,44 @@ def predict_cobb_angles(
         results_df['error_angle_2'] = results_df['cobb_angle_2'] - results_df['predicted_angle_2']
         results_df['error_angle_3'] = results_df['cobb_angle_3'] - results_df['predicted_angle_3']
 
+        if 'severity_class' in results_df.columns:
+            true_classes = results_df['severity_class'].values.astype(str)
+            class_metrics = evaluate_classification(true_classes, predicted_classes)
+            print_classification_metrics(class_metrics, "Prediction")
+
+            output_dir = Path(output_path).parent
+            class_metrics_path = output_dir / 'prediction_classification_metrics.csv'
+            class_metrics_data = {
+                'accuracy': [class_metrics['accuracy']],
+                'precision': [class_metrics['precision']],
+                'recall': [class_metrics['recall']],
+                'f1_score': [class_metrics['f1_score']]
+            }
+            pd.DataFrame(class_metrics_data).to_csv(class_metrics_path, index=False)
+
+            cm_path = output_dir / 'prediction_confusion_matrix.csv'
+            pd.DataFrame(
+                class_metrics['confusion_matrix'],
+                index=['normal', 'mild', 'moderate', 'severe'],
+                columns=['normal', 'mild', 'moderate', 'severe']
+            ).to_csv(cm_path)
+
+            print("\n" + "=" * 60)
+            print("Prediction Complete - Classification Files Saved")
+            print("=" * 60)
+            print(f"{'Classification metrics':<30}: {class_metrics_path}")
+            print(f"{'Confusion matrix':<30}: {cm_path}")
+            print("=" * 60)
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     results_df.to_csv(output_path, index=False)
-    print(f"\nPredictions saved to {output_path}")
+
+    print("\n" + "=" * 60)
+    print("Predictions Saved")
+    print("=" * 60)
+    print(f"{'Predictions file':<30}: {output_path}")
+    print("=" * 60)
 
 
 def main():
