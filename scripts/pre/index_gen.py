@@ -71,6 +71,28 @@ def parse_cobb_angles(txt_path: Path) -> Dict[str, List[float]]:
     return cobb_data
 
 
+def classify_severity(angles: List[float]) -> str:
+    """
+    Classify spinal scoliosis severity based on maximum Cobb angle.
+
+    Args:
+        angles: List of three Cobb angles
+
+    Returns:
+        Severity classification: 'normal', 'mild', 'moderate', or 'severe'
+    """
+    max_angle = max(angles)
+
+    if max_angle < 10:
+        return 'normal'
+    elif max_angle < 25:
+        return 'mild'
+    elif max_angle <= 45:
+        return 'moderate'
+    else:
+        return 'severe'
+
+
 def build_image_path_map(data_dir: Path) -> Dict[str, str]:
     """
     Build a mapping from filename to its subdirectory path.
@@ -198,6 +220,8 @@ def generate_csv(
                 for ann in img_data['annotations']
             )
 
+            severity = classify_severity(angles)
+
             row = {
                 'filename': filename,
                 'relative_path': relative_path,
@@ -207,6 +231,7 @@ def generate_csv(
                 'cobb_angle_1': angles[0],
                 'cobb_angle_2': angles[1],
                 'cobb_angle_3': angles[2],
+                'severity_class': severity,
                 'num_annotations': num_annotations,
                 'total_annotation_area': total_area,
                 'avg_annotation_score': avg_score,
@@ -227,6 +252,7 @@ def generate_csv(
         'cobb_angle_1',
         'cobb_angle_2',
         'cobb_angle_3',
+        'severity_class',
         'num_annotations',
         'total_annotation_area',
         'avg_annotation_score',
