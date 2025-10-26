@@ -19,3 +19,5 @@ docs/
 # Model files
 *.pt
 models/*/
+!models/optuna_results
+!models/cobb_predictor_optimized
