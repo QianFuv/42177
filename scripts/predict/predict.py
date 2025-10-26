@@ -13,7 +13,8 @@ from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
     confusion_matrix,
-    classification_report
+    classification_report,
+    cohen_kappa_score
 )
 
 from .feature_extractor import CurveFeatureExtractor
@@ -44,6 +45,31 @@ def classify_severity(angles: np.ndarray) -> np.ndarray:
     return severity
 
 
+def calculate_weighted_clinical_error(cm: np.ndarray) -> float:
+    """
+    Calculate Weighted Clinical Error (WCE) based on clinical severity.
+
+    Args:
+        cm: Confusion matrix with shape (4, 4) for ['normal', 'mild', 'moderate', 'severe']
+
+    Returns:
+        Weighted clinical error score
+    """
+    weight_matrix = np.array([
+        [0, 1, 2, 3],
+        [1, 0, 1, 2],
+        [2, 1, 0, 1],
+        [3, 2, 1, 0]
+    ])
+
+    weighted_errors = cm * weight_matrix
+    total_weighted_error = np.sum(weighted_errors)
+    total_samples = np.sum(cm)
+
+    wce = total_weighted_error / total_samples if total_samples > 0 else 0.0
+    return float(wce)
+
+
 def evaluate_classification(y_true_classes: np.ndarray, y_pred_classes: np.ndarray) -> dict:
     """
     Evaluate classification performance.
@@ -55,34 +81,53 @@ def evaluate_classification(y_true_classes: np.ndarray, y_pred_classes: np.ndarr
     Returns:
         Dictionary containing classification metrics
     """
+    labels = ['normal', 'mild', 'moderate', 'severe']
+
     accuracy = accuracy_score(y_true_classes, y_pred_classes)
 
-    precision, recall, f1, support = precision_recall_fscore_support(
+    precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
         y_true_classes,
         y_pred_classes,
-        labels=['normal', 'mild', 'moderate', 'severe'],
+        labels=labels,
         average='weighted',
         zero_division=0
     )
 
+    precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+        y_true_classes,
+        y_pred_classes,
+        labels=labels,
+        average='macro',
+        zero_division=0
+    )
+
+    kappa = cohen_kappa_score(y_true_classes, y_pred_classes, labels=labels)
+
     cm = confusion_matrix(
         y_true_classes,
         y_pred_classes,
-        labels=['normal', 'mild', 'moderate', 'severe']
+        labels=labels
     )
+
+    wce = calculate_weighted_clinical_error(cm)
 
     report = classification_report(
         y_true_classes,
         y_pred_classes,
-        labels=['normal', 'mild', 'moderate', 'severe'],
+        labels=labels,
         zero_division=0
     )
 
     return {
         'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1_score': f1,
+        'precision_weighted': precision_weighted,
+        'recall_weighted': recall_weighted,
+        'f1_score_weighted': f1_weighted,
+        'precision_macro': precision_macro,
+        'recall_macro': recall_macro,
+        'f1_score_macro': f1_macro,
+        'cohen_kappa': kappa,
+        'weighted_clinical_error': wce,
         'confusion_matrix': cm,
         'classification_report': report
     }
@@ -100,9 +145,17 @@ def print_classification_metrics(metrics: dict, dataset_name: str = "Dataset") -
     print(f"{dataset_name} Classification Metrics")
     print("=" * 60)
     print(f"{'accuracy':<30}: {metrics['accuracy']:>10.4f}")
-    print(f"{'precision':<30}: {metrics['precision']:>10.4f}")
-    print(f"{'recall':<30}: {metrics['recall']:>10.4f}")
-    print(f"{'f1_score':<30}: {metrics['f1_score']:>10.4f}")
+    print("\nWeighted Metrics (account for class imbalance):")
+    print(f"{'precision_weighted':<30}: {metrics['precision_weighted']:>10.4f}")
+    print(f"{'recall_weighted':<30}: {metrics['recall_weighted']:>10.4f}")
+    print(f"{'f1_score_weighted':<30}: {metrics['f1_score_weighted']:>10.4f}")
+    print("\nMacro-averaged Metrics (treat all classes equally):")
+    print(f"{'precision_macro':<30}: {metrics['precision_macro']:>10.4f}")
+    print(f"{'recall_macro':<30}: {metrics['recall_macro']:>10.4f}")
+    print(f"{'f1_score_macro':<30}: {metrics['f1_score_macro']:>10.4f}")
+    print("\nAdvanced Metrics:")
+    print(f"{'cohen_kappa':<30}: {metrics['cohen_kappa']:>10.4f}")
+    print(f"{'weighted_clinical_error':<30}: {metrics['weighted_clinical_error']:>10.4f}")
     print("=" * 60)
 
     print(f"\nConfusion Matrix ({dataset_name}):")
@@ -345,9 +398,14 @@ def train_model(
     class_metrics_data = {
         'dataset': ['train', 'validation'],
         'accuracy': [train_class_metrics['accuracy'], val_class_metrics['accuracy']],
-        'precision': [train_class_metrics['precision'], val_class_metrics['precision']],
-        'recall': [train_class_metrics['recall'], val_class_metrics['recall']],
-        'f1_score': [train_class_metrics['f1_score'], val_class_metrics['f1_score']]
+        'precision_weighted': [train_class_metrics['precision_weighted'], val_class_metrics['precision_weighted']],
+        'recall_weighted': [train_class_metrics['recall_weighted'], val_class_metrics['recall_weighted']],
+        'f1_score_weighted': [train_class_metrics['f1_score_weighted'], val_class_metrics['f1_score_weighted']],
+        'precision_macro': [train_class_metrics['precision_macro'], val_class_metrics['precision_macro']],
+        'recall_macro': [train_class_metrics['recall_macro'], val_class_metrics['recall_macro']],
+        'f1_score_macro': [train_class_metrics['f1_score_macro'], val_class_metrics['f1_score_macro']],
+        'cohen_kappa': [train_class_metrics['cohen_kappa'], val_class_metrics['cohen_kappa']],
+        'weighted_clinical_error': [train_class_metrics['weighted_clinical_error'], val_class_metrics['weighted_clinical_error']]
     }
     class_metrics_path = output_dir / 'classification_metrics.csv'
     pd.DataFrame(class_metrics_data).to_csv(class_metrics_path, index=False)
@@ -444,9 +502,14 @@ def predict_cobb_angles(
             class_metrics_path = output_dir / 'prediction_classification_metrics.csv'
             class_metrics_data = {
                 'accuracy': [class_metrics['accuracy']],
-                'precision': [class_metrics['precision']],
-                'recall': [class_metrics['recall']],
-                'f1_score': [class_metrics['f1_score']]
+                'precision_weighted': [class_metrics['precision_weighted']],
+                'recall_weighted': [class_metrics['recall_weighted']],
+                'f1_score_weighted': [class_metrics['f1_score_weighted']],
+                'precision_macro': [class_metrics['precision_macro']],
+                'recall_macro': [class_metrics['recall_macro']],
+                'f1_score_macro': [class_metrics['f1_score_macro']],
+                'cohen_kappa': [class_metrics['cohen_kappa']],
+                'weighted_clinical_error': [class_metrics['weighted_clinical_error']]
             }
             pd.DataFrame(class_metrics_data).to_csv(class_metrics_path, index=False)
 

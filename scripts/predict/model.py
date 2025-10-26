@@ -160,24 +160,79 @@ class CobbAnglePredictor:
             rmse = np.sqrt(mse)
             r2 = r2_score(y_true[:, i], y_pred[:, i])
 
+            mape = self._calculate_mape(y_true[:, i], y_pred[:, i])
+
+            caa = self._calculate_caa(y_true[:, i], y_pred[:, i], threshold=5.0)
+
             if prefix:
                 angle_name = f'{prefix}_{angle_name}'
 
             metrics[f'{angle_name}_mae'] = mae
             metrics[f'{angle_name}_rmse'] = rmse
             metrics[f'{angle_name}_r2'] = r2
+            metrics[f'{angle_name}_mape'] = mape
+            metrics[f'{angle_name}_caa'] = caa
 
         overall_mae = mean_absolute_error(y_true, y_pred)
         overall_rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+        overall_mape = self._calculate_mape(y_true.flatten(), y_pred.flatten())
+        overall_caa = self._calculate_caa(y_true.flatten(), y_pred.flatten(), threshold=5.0)
 
         if prefix:
             metrics[f'{prefix}_overall_mae'] = overall_mae
             metrics[f'{prefix}_overall_rmse'] = overall_rmse
+            metrics[f'{prefix}_overall_mape'] = overall_mape
+            metrics[f'{prefix}_overall_caa'] = overall_caa
         else:
             metrics['overall_mae'] = overall_mae
             metrics['overall_rmse'] = overall_rmse
+            metrics['overall_mape'] = overall_mape
+            metrics['overall_caa'] = overall_caa
 
         return metrics
+
+    def _calculate_mape(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """
+        Calculate Mean Absolute Percentage Error (MAPE).
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+
+        Returns:
+            MAPE value as percentage
+        """
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+
+        non_zero_mask = y_true != 0
+        if not np.any(non_zero_mask):
+            return 0.0
+
+        mape = np.mean(np.abs((y_true[non_zero_mask] - y_pred[non_zero_mask]) / y_true[non_zero_mask])) * 100
+        return float(mape)
+
+    def _calculate_caa(self, y_true: np.ndarray, y_pred: np.ndarray, threshold: float = 5.0) -> float:
+        """
+        Calculate Clinically Acceptable Accuracy (CAA).
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+            threshold: Acceptable error threshold in degrees
+
+        Returns:
+            CAA value as percentage
+        """
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+
+        errors = np.abs(y_true - y_pred)
+        acceptable = np.sum(errors <= threshold)
+        total = len(errors)
+
+        caa = (acceptable / total) * 100 if total > 0 else 0.0
+        return float(caa)
 
     def get_feature_importance(self) -> Optional[pd.DataFrame]:
         """
