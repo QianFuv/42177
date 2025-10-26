@@ -1,6 +1,6 @@
 # Spinal Medical Image Analysis
 
-A machine learning project for spinal bone detection and Cobb angle prediction from medical X-ray images using YOLOv11 and XGBoost.
+A machine learning project for spinal bone detection, Cobb angle prediction, and scoliosis severity classification from medical X-ray images using YOLOv11 and XGBoost.
 
 ## Overview
 
@@ -8,8 +8,13 @@ This project provides a complete pipeline for analyzing spinal medical images:
 
 1. **Spinal Bone Detection**: YOLOv11-based object detection to locate spinal vertebrae
 2. **Cobb Angle Prediction**: Curve fitting and XGBoost regression to predict Cobb angles for scoliosis assessment
+3. **Severity Classification**: Automatic classification of scoliosis severity based on Cobb angles
 
-The Cobb angle is a standard measurement used by orthopedic surgeons to assess the severity of spinal curvature in conditions like scoliosis.
+The Cobb angle is a standard measurement used by orthopedic surgeons to assess the severity of spinal curvature in conditions like scoliosis. The system classifies severity into four categories:
+- **Normal**: < 10°
+- **Mild**: 10° - 25°
+- **Moderate**: 25° - 45°
+- **Severe**: > 45°
 
 ## Project Structure
 
@@ -85,9 +90,10 @@ uv run index_gen
 This processes:
 - JSON annotations (bounding boxes, segmentation, transcriptions)
 - Cobb angle measurements from text files
+- Severity classification based on maximum Cobb angle
 - Image metadata
 
-Output: `data_index/data.csv`
+Output: `data_index/data.csv` with comprehensive annotations including severity labels
 
 ### 2. Train Spinal Bone Detection Model
 
@@ -169,13 +175,33 @@ Options:
 
 You can use the optimized hyperparameters from step 3 by specifying them here.
 
+**Training Outputs**:
+The training process generates several output files in the specified output directory:
+- `cobb_angle_predictor.pkl`: Trained XGBoost model
+- `training_metrics.csv`: Regression metrics (MAE, RMSE, R²) for train and validation sets
+- `classification_metrics.csv`: Classification metrics (accuracy, precision, recall, F1) for train and validation sets
+- `train_confusion_matrix.csv`: Confusion matrix for training set severity classification
+- `val_confusion_matrix.csv`: Confusion matrix for validation set severity classification
+- `feature_importance.csv`: Feature importance scores from XGBoost
+
+The console output displays:
+- Regression metrics for each Cobb angle and overall performance
+- Classification metrics with accuracy, precision, recall, and F1-score
+- Confusion matrix showing severity classification performance
+- Top 10 most important features for prediction
+
 #### Run Predictions
 
 ```bash
 uv run predict predict --model models/cobb_predictor/cobb_angle_predictor.pkl --csv data_index/data.csv --output predictions.csv
 ```
 
-The predictor outputs three Cobb angles per image (angle_1, angle_2, angle_3).
+The predictor outputs:
+- Three Cobb angles per image (`predicted_angle_1`, `predicted_angle_2`, `predicted_angle_3`)
+- Severity classification (`predicted_severity_class`: normal/mild/moderate/severe)
+- If ground truth is available, classification metrics are computed and saved:
+  - `prediction_classification_metrics.csv`: Accuracy, precision, recall, F1-score
+  - `prediction_confusion_matrix.csv`: Confusion matrix for severity classification
 
 ## Technical Details
 
@@ -187,6 +213,7 @@ The generated `data.csv` contains:
 - `dataset`: 'train' or 'test'
 - `width`, `height`: Image dimensions
 - `cobb_angle_1`, `cobb_angle_2`, `cobb_angle_3`: Ground truth angles
+- `severity_class`: Severity classification ('normal', 'mild', 'moderate', 'severe')
 - `num_annotations`: Number of bounding boxes
 - `bboxes`: Semicolon-separated bounding boxes (x,y,w,h format)
 - `transcriptions`: Vertebra labels
@@ -206,6 +233,17 @@ The curve feature extractor:
 
 - **Detection**: YOLOv11n (nano) for efficient real-time detection
 - **Regression**: XGBoost multi-output regressor for three Cobb angles
+- **Classification**: Rule-based severity classifier based on maximum predicted Cobb angle
+
+The pipeline performs:
+1. Vertebra detection using YOLOv11
+2. Curve feature extraction from detected vertebrae
+3. Cobb angle prediction using XGBoost (regression task)
+4. Severity classification based on predicted angles (classification task)
+
+**Evaluation Metrics**:
+- **Regression**: MAE, RMSE, R² for each Cobb angle
+- **Classification**: Accuracy, precision, recall, F1-score, confusion matrix for severity levels
 
 ## Dataset
 
@@ -214,16 +252,3 @@ This project uses the Spinal-AI2024 dataset:
 - Split into 5 subsets of 4,000 images each
 - Annotations include vertebra bounding boxes and Cobb angle measurements
 - Training/test split provided in annotations
-
-## License
-
-[Add your license information here]
-
-## Citation
-
-[Add citation information if applicable]
-
-## Acknowledgments
-
-- Ultralytics for YOLOv11 framework
-- Spinal-AI2024 dataset contributors
