@@ -178,16 +178,21 @@ You can use the optimized hyperparameters from step 3 by specifying them here.
 **Training Outputs**:
 The training process generates several output files in the specified output directory:
 - `cobb_angle_predictor.pkl`: Trained XGBoost model
-- `training_metrics.csv`: Regression metrics (MAE, RMSE, R²) for train and validation sets
-- `classification_metrics.csv`: Classification metrics (accuracy, precision, recall, F1) for train and validation sets
+- `training_metrics.csv`: Regression metrics (MAE, RMSE, R², MAPE, CAA) for train and validation sets
+- `classification_metrics.csv`: Comprehensive classification metrics for train and validation sets:
+  - Standard: accuracy, weighted precision/recall/F1
+  - Macro-averaged: precision/recall/F1 (treats all classes equally)
+  - Advanced: Cohen's Kappa, Weighted Clinical Error (WCE)
 - `train_confusion_matrix.csv`: Confusion matrix for training set severity classification
 - `val_confusion_matrix.csv`: Confusion matrix for validation set severity classification
-- `feature_importance.csv`: Feature importance scores from XGBoost
+- `feature_importance.csv`: XGBoost feature importance scores
 
 The console output displays:
-- Regression metrics for each Cobb angle and overall performance
-- Classification metrics with accuracy, precision, recall, and F1-score
+- Regression metrics for each Cobb angle (MAE, RMSE, R², MAPE, CAA) and overall performance
+- Classification metrics with weighted and macro-averaged precision, recall, F1-score
+- Advanced metrics: Cohen's Kappa (inter-rater agreement), Weighted Clinical Error
 - Confusion matrix showing severity classification performance
+- Detailed classification report with per-class metrics
 - Top 10 most important features for prediction
 
 #### Run Predictions
@@ -199,8 +204,8 @@ uv run predict predict --model models/cobb_predictor/cobb_angle_predictor.pkl --
 The predictor outputs:
 - Three Cobb angles per image (`predicted_angle_1`, `predicted_angle_2`, `predicted_angle_3`)
 - Severity classification (`predicted_severity_class`: normal/mild/moderate/severe)
-- If ground truth is available, classification metrics are computed and saved:
-  - `prediction_classification_metrics.csv`: Accuracy, precision, recall, F1-score
+- If ground truth is available, comprehensive metrics are computed and saved:
+  - `prediction_classification_metrics.csv`: All classification metrics (weighted/macro precision/recall/F1, Cohen's Kappa, WCE)
   - `prediction_confusion_matrix.csv`: Confusion matrix for severity classification
 
 ## Technical Details
@@ -242,8 +247,20 @@ The pipeline performs:
 4. Severity classification based on predicted angles (classification task)
 
 **Evaluation Metrics**:
-- **Regression**: MAE, RMSE, R² for each Cobb angle
-- **Classification**: Accuracy, precision, recall, F1-score, confusion matrix for severity levels
+
+*Regression Metrics (Cobb angle prediction):*
+- **Primary**: MAE, RMSE, R² for each Cobb angle and overall
+- **Secondary**:
+  - MAPE (Mean Absolute Percentage Error): Scale-independent relative error
+  - CAA (Clinically Acceptable Accuracy): % of predictions within 5° threshold
+
+*Classification Metrics (Severity assessment):*
+- **Standard**: Accuracy, weighted precision/recall/F1-score
+- **Macro-averaged**: Precision/recall/F1 treating all classes equally
+- **Advanced**:
+  - Cohen's Kappa: Inter-rater agreement coefficient
+  - Weighted Clinical Error (WCE): Clinical risk-weighted error with severity-based penalties
+- **Visualization**: Confusion matrix, detailed per-class classification report
 
 ## Dataset
 
